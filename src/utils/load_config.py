@@ -2,11 +2,39 @@
 import os
 from dotenv import load_dotenv
 import yaml
-from pyprojroot import here
+try:
+    from pyprojroot import here
+except Exception:
+    # Minimal fallback for `here()` when pyprojroot isn't installed.
+    # Assumes repository layout where this file is located at <repo>/src/utils/...
+    from pathlib import Path
+
+    def here(p=""):
+        root = Path(__file__).resolve().parents[2]
+        return root / p if p else root
 import shutil
-from openai import AzureOpenAI
-from langchain.chat_models import AzureChatOpenAI
-import chromadb
+# AzureOpenAI and AzureChatOpenAI have moved between packages across
+# langchain versions. Import defensively so this module can be imported
+# even if those providers aren't installed in the environment.
+try:
+    from openai import AzureOpenAI
+except Exception:
+    AzureOpenAI = None
+
+try:
+    # Newer langchain versions may provide the class under langchain.chat_models
+    from langchain.chat_models import AzureChatOpenAI
+except Exception:
+    try:
+        # Some installs use the separate langchain_openai package
+        from langchain_openai import AzureChatOpenAI
+    except Exception:
+        AzureChatOpenAI = None
+
+try:
+    import chromadb
+except Exception:
+    chromadb = None
 
 print("Environment variables are loaded:", load_dotenv())
 
@@ -59,6 +87,13 @@ class LoadConfig:
     #         temperature=self.temperature)
 
     def load_chroma_client(self):
+        if chromadb is None:
+            # chromadb isn't installed in this environment; make this optional so
+            # scripts that don't require the vector DB can still run.
+            print("chromadb not available: skipping Chroma client initialization.")
+            self.chroma_client = None
+            return
+
         self.chroma_client = chromadb.PersistentClient(
             path=str(here(self.persist_directory)))
 
